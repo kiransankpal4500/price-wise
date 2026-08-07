@@ -3,23 +3,31 @@
 import React from 'react';
 import Link from 'next/link';
 import { SearchBar } from '@/components/search/SearchBar';
-import { Tag, Sparkles, TrendingUp } from 'lucide-react';
+import { Tag, TrendingUp, ShoppingBag, Check } from 'lucide-react';
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/60 shadow-2xl shadow-sky-950/20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-sky-500/30 group-hover:scale-105 group-hover:shadow-sky-400/50 transition-all duration-300">
-            P
+    <header className="sticky top-0 z-50 bg-[#f8f9ff]/90 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
+        {/* Brand Logo: Shopping bag merged with checkmark in signature gradient */}
+        <Link href="/" className="flex items-center gap-3 group">
+          <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-coral-500 p-0.5 shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-300">
+            <div className="w-full h-full bg-white rounded-[14px] flex items-center justify-center relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-tr from-violet-600/10 via-indigo-600/10 to-orange-500/10" />
+              <div className="relative flex items-center justify-center">
+                <ShoppingBag className="w-6 h-6 text-violet-700 stroke-[2.2]" />
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-gradient-to-tr from-violet-600 to-coral-500 rounded-full flex items-center justify-center text-white shadow-sm">
+                  <Check className="w-3 h-3 stroke-[3]" />
+                </div>
+              </div>
+            </div>
           </div>
           <div className="flex flex-col">
-            <span className="font-black text-xl tracking-tight text-white leading-none">
-              Price<span className="bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">Wise</span>
+            <span className="font-extrabold text-2xl tracking-tight text-slate-900 leading-none">
+              Price<span className="text-brand-gradient">Wise</span>
             </span>
-            <span className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase flex items-center gap-1">
-              Smart Comparison <Sparkles className="w-2.5 h-2.5 text-amber-400 inline" />
+            <span className="text-[11px] font-semibold text-slate-500 tracking-wide mt-1">
+              Approachable Intelligence in Shopping
             </span>
           </div>
         </Link>
@@ -33,16 +41,16 @@ export function Header() {
         <nav className="flex items-center gap-2">
           <Link
             href="/search"
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/80 rounded-xl transition-all border border-transparent hover:border-slate-700"
+            className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:text-violet-700 bg-white hover:bg-violet-50/60 rounded-full border border-slate-200/80 shadow-sm transition-all"
           >
-            <TrendingUp className="w-4 h-4 text-sky-400" />
+            <TrendingUp className="w-4 h-4 text-violet-600" />
             <span>Compare All</span>
           </Link>
           <Link
             href="/search?category=Electronics"
-            className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/80 rounded-xl transition-all border border-transparent hover:border-slate-700"
+            className="hidden sm:flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:text-violet-700 bg-white hover:bg-violet-50/60 rounded-full border border-slate-200/80 shadow-sm transition-all"
           >
-            <Tag className="w-4 h-4 text-indigo-400" />
+            <Tag className="w-4 h-4 text-coral-500" />
             <span>Electronics</span>
           </Link>
         </nav>

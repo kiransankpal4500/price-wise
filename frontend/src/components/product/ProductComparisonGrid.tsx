@@ -39,7 +39,7 @@ export function ProductComparisonGrid({
   return (
     <div className="space-y-6">
       {/* Grid of Platform Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
         {sortedPlatforms.map((platform) => {
           const isBestPick = platform.platformName === bestPickPlatform;
           const discountPercent =
@@ -58,15 +58,15 @@ export function ProductComparisonGrid({
           return (
             <div
               key={platform.platformName}
-              className={`relative rounded-3xl bg-white p-6 transition-all duration-300 flex flex-col justify-between ${
+              className={`relative rounded-[24px] bg-white p-6 transition-all duration-300 flex flex-col justify-between ${
                 isBestPick
-                  ? 'border-2 border-emerald-500 shadow-xl shadow-emerald-500/10 ring-4 ring-emerald-500/10 scale-[1.02]'
-                  : 'border border-slate-200 shadow-sm hover:shadow-md'
+                  ? 'border-2 border-emerald-500 shadow-xl shadow-emerald-500/10 ring-4 ring-emerald-500/10 scale-[1.03] z-10 glow-bestpick'
+                  : 'border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-1'
               }`}
             >
               {/* Top Banner if Best Pick */}
               {isBestPick && (
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-20">
                   <BestPickBadge score={platform.computedScore} />
                 </div>
               )}
@@ -76,19 +76,19 @@ export function ProductComparisonGrid({
                 <div className="flex items-center justify-between gap-2 mb-4 pt-1">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`px-3 py-1 rounded-xl text-sm font-extrabold border ${theme.bg} ${theme.text} ${theme.border}`}
+                      className={`px-3.5 py-1 rounded-full text-xs font-extrabold border ${theme.bg} ${theme.text} ${theme.border}`}
                     >
                       {platform.platformName}
                     </span>
                   </div>
 
                   {platform.inStock ? (
-                    <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                      <CheckCircle2 className="w-3 h-3 mr-1" /> In Stock
+                    <span className="inline-flex items-center text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" /> In Stock
                     </span>
                   ) : (
-                    <span className="inline-flex items-center text-[11px] font-semibold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
-                      <XCircle className="w-3 h-3 mr-1" /> Out of Stock
+                    <span className="inline-flex items-center text-[11px] font-bold text-rose-700 bg-rose-50 px-3 py-1 rounded-full border border-rose-200">
+                      <XCircle className="w-3.5 h-3.5 mr-1 text-rose-600" /> Out of Stock
                     </span>
                   )}
                 </div>
@@ -100,14 +100,14 @@ export function ProductComparisonGrid({
                       ₹{platform.price.toLocaleString('en-IN')}
                     </span>
                     {platform.originalPrice && platform.originalPrice > platform.price && (
-                      <span className="text-sm text-slate-400 line-through font-medium">
+                      <span className="text-sm text-slate-400 line-through font-semibold">
                         ₹{platform.originalPrice.toLocaleString('en-IN')}
                       </span>
                     )}
                   </div>
 
                   {discountPercent > 0 && (
-                    <div className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
+                    <div className="inline-flex items-center gap-1 text-xs font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
                       <TrendingDown className="w-3.5 h-3.5" /> Save {discountPercent}% OFF
                     </div>
                   )}
@@ -117,7 +117,7 @@ export function ProductComparisonGrid({
                 <div className="space-y-3 py-3 border-t border-b border-slate-100 text-xs">
                   {/* Rating */}
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500 font-medium">Customer Rating</span>
+                    <span className="text-slate-500 font-semibold">Customer Rating</span>
                     <RatingStars
                       rating={platform.rating}
                       reviewCount={platform.reviewCount}
@@ -128,26 +128,26 @@ export function ProductComparisonGrid({
                   {/* Delivery ETA */}
                   {platform.deliveryEta && (
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500 font-medium">Delivery Time</span>
-                      <span className="font-semibold text-slate-800 flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded">
-                        <Clock className="w-3.5 h-3.5 text-sky-600" /> {platform.deliveryEta}
+                      <span className="text-slate-500 font-semibold">Delivery Estimate</span>
+                      <span className="font-bold text-slate-800 flex items-center gap-1 bg-violet-50 text-violet-700 px-2.5 py-0.5 rounded-full border border-violet-100">
+                        <Clock className="w-3.5 h-3.5 text-violet-600" /> {platform.deliveryEta}
                       </span>
                     </div>
                   )}
 
                   {/* Computed Score Bar */}
                   {platform.computedScore !== undefined && (
-                    <div className="space-y-1 pt-1">
-                      <div className="flex justify-between text-[11px] font-semibold text-slate-600">
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex justify-between text-[11px] font-bold text-slate-700">
                         <span className="flex items-center gap-1">
                           <Award className="w-3.5 h-3.5 text-amber-500" /> Value Score
                         </span>
                         <span>{platform.computedScore} / 100</span>
                       </div>
-                      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden p-0.5">
                         <div
                           className={`h-full rounded-full ${
-                            isBestPick ? 'bg-emerald-500' : 'bg-sky-500'
+                            isBestPick ? 'bg-emerald-500' : 'bg-violet-500'
                           }`}
                           style={{ width: `${platform.computedScore}%` }}
                         />
@@ -165,15 +165,17 @@ export function ProductComparisonGrid({
                   rel="noopener noreferrer"
                   className="block w-full"
                 >
-                  <Button
-                    variant={isBestPick ? 'success' : 'primary'}
-                    size="lg"
-                    className="w-full font-bold shadow-sm"
+                  <button
                     disabled={!platform.inStock}
+                    className={`w-full py-3 px-4 rounded-full font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md ${
+                      isBestPick
+                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-500/20'
+                        : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-violet-500/20'
+                    }`}
                   >
                     <span>Buy on {platform.platformName}</span>
-                    <ExternalLink className="w-4 h-4 ml-1 opacity-80" />
-                  </Button>
+                    <ExternalLink className="w-4 h-4 opacity-90" />
+                  </button>
                 </a>
               </div>
             </div>

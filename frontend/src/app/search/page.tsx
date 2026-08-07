@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { SearchBar } from '@/components/search/SearchBar';
 import { SearchFilters } from '@/components/search/SearchFilters';
 import { ProductCard } from '@/components/product/ProductCard';
 import { Loader } from '@/components/ui/Loader';
 import { useProductSearch } from '@/hooks/useProductSearch';
-import { SearchX, SlidersHorizontal } from 'lucide-react';
+import { SearchX } from 'lucide-react';
 
-export default function SearchPage() {
+function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -116,3 +116,12 @@ export default function SearchPage() {
     </div>
   );
 }
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<Loader text="Loading search..." />}>
+      <SearchContent />
+    </Suspense>
+  );
+}
+

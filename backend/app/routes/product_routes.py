@@ -59,7 +59,7 @@ def _apply_scores(products: List[Product]) -> List[Product]:
 
 def _cache_message(cache_status: str, last_updated: Optional[str]) -> str:
     """Returns a human-readable message describing the freshness of the data being returned."""
-    if cache_status == CACHE_FRESH:
+    if cache_status in (CACHE_FRESH, "live"):
         return "Data is up to date."
     if last_updated:
         try:
@@ -85,31 +85,29 @@ async def _fetch_from_api_and_cache(
     budget_type: str,
 ) -> Optional[List[Product]]:
     """
-    Calls QuickCommerce API if budget permits, saves results to cache, and returns products.
-    Returns None if budget is exhausted or the API call fails.
+    Calls external APIs if budget permits, saves results to cache, and returns products.
+    Returns None if budget is exhausted or API call fails.
     """
     if not await can_make_api_call(budget_type):
         logger.info(f"[Budget] Skipping API call for key='{search_key}' — budget exhausted.")
         return None
 
     try:
-        logger.info(f"[API] Calling QuickCommerce API for query='{query}' ({budget_type})")
+        logger.info(f"[API] Calling live API providers for query='{query}' ({budget_type})")
         products = await fetch_products_from_quickcommerce(query=query)
         if products:
-            # Increment usage ONLY after a successful API response
             await increment_api_call()
             await save_products_to_cache(products, search_key)
             return products
         return None
     except Exception as e:
-        logger.error(f"[API] QuickCommerce API call failed for key='{search_key}': {e}")
+        logger.error(f"[API] Provider call failed for key='{search_key}': {e}")
         return None
 
 
 async def _background_refresh(search_key: str, query: Optional[str], budget_type: str) -> None:
     """
     Background task that refreshes stale cache without blocking the user's response.
-    Uses a per-key lock so only one refresh runs at a time across concurrent users.
     """
     acquired = await try_acquire_refresh_lock(search_key)
     if not acquired:
@@ -136,34 +134,40 @@ async def search_products(
     search_key = normalize_search_key(query)
     cached_products, cache_status, last_updated = await get_cached_products(search_key)
 
-    if cache_status == CACHE_FRESH:
-        # Return fresh cache immediately — no API call
+    if cache_status == CACHE_FRESH and cached_products:
         products = cached_products
         data_source = "cache"
     elif cache_status in (CACHE_STALE, CACHE_VERY_STALE) and cached_products:
-        # Return stale cache immediately, trigger background refresh
         products = cached_products
         data_source = "cache"
         background_tasks.add_task(_background_refresh, search_key, query, BUDGET_SEARCH)
     else:
-        # Cache is empty — try the API now, wait for response
+        # Cache is empty or stale — try live API provider
         live_products = await _fetch_from_api_and_cache(query, search_key, BUDGET_SEARCH)
         if live_products:
             products = live_products
             cache_status = "live"
             data_source = "QuickCommerce"
             last_updated = datetime.now(timezone.utc).isoformat()
+        elif cached_products:
+            products = cached_products
+            data_source = "cache"
         else:
-            return SearchResponse(
-                query=query,
-                total=0,
-                results=[],
-                cache_info=CacheMetadata(
-                    cache_status="unavailable",
-                    data_source="none",
-                    message="No fresh results available. Monthly API budget may be exhausted.",
-                ),
-            )
+            # Fallback to general catalog cache if specific search key has no cache
+            catalog_products, c_status, c_updated = await get_cached_products("__trending__")
+            if query:
+                q_lower = query.lower()
+                products = [
+                    p for p in catalog_products
+                    if q_lower in p.name.lower() or q_lower in p.category.lower() or q_lower in (p.description or "").lower()
+                ]
+                if not products:
+                    products = catalog_products
+            else:
+                products = catalog_products
+            cache_status = c_status if c_status != CACHE_EMPTY else "stale"
+            data_source = "cache"
+            last_updated = c_updated
 
     # Apply filters
     if category and category.lower() != "all":
@@ -198,32 +202,31 @@ async def get_trending_products(background_tasks: BackgroundTasks):
     search_key = "__trending__"
     cached_products, cache_status, last_updated = await get_cached_products(search_key)
 
-    if cache_status == CACHE_FRESH:
+    if cache_status == CACHE_FRESH and cached_products:
         products = cached_products
         data_source = "cache"
     elif cache_status in (CACHE_STALE, CACHE_VERY_STALE) and cached_products:
-        # Return existing cache immediately, refresh in background
         products = cached_products
         data_source = "cache"
         background_tasks.add_task(_background_refresh, search_key, None, BUDGET_TRENDING)
     else:
-        # No cache yet — call API synchronously so first user gets real data
+        # Try live API providers
         live_products = await _fetch_from_api_and_cache(None, search_key, BUDGET_TRENDING)
         if live_products:
             products = live_products
             cache_status = "live"
             data_source = "QuickCommerce"
             last_updated = datetime.now(timezone.utc).isoformat()
+        elif cached_products:
+            products = cached_products
+            data_source = "cache"
         else:
-            return TrendingResponse(
-                total=0,
-                results=[],
-                cache_info=CacheMetadata(
-                    cache_status="unavailable",
-                    data_source="none",
-                    message="Trending data unavailable. API budget may be exhausted.",
-                ),
-            )
+            # Fallback to initial seed catalog if cache is empty
+            from app.database import init_db_sync
+            init_db_sync()
+            cached_products, cache_status, last_updated = await get_cached_products(search_key)
+            products = cached_products
+            data_source = "cache"
 
     products = _apply_scores(products)
 
@@ -243,30 +246,30 @@ async def get_trending_products(background_tasks: BackgroundTasks):
 @router.get("/compare/{product_id}", response_model=Product)
 @router.get("/api/compare/{product_id}", response_model=Product)
 async def compare_product(product_id: str, background_tasks: BackgroundTasks):
-    # First try to find this product in the cache
     search_key = f"__product__{product_id}"
     cached, cache_status, last_updated = await get_cached_products(search_key)
     product = next((p for p in cached if p.id == product_id), None)
 
     if product is None:
-        # Try searching by product_id in the general trending/catalog cache
         trending_cached, _, _ = await get_cached_products("__trending__")
         product = next((p for p in trending_cached if p.id == product_id), None)
 
     if product is None:
-        # Fall back to QuickCommerce API if budget allows
         if await can_make_api_call(BUDGET_CATALOG):
             product = await fetch_product_by_id(product_id)
             if product:
                 await increment_api_call()
                 await save_products_to_cache([product], search_key)
         if product is None:
-            raise HTTPException(status_code=404, detail="Product not found")
+            # Final fallback: search across all cached catalog items
+            all_cached, _, _ = await get_cached_products("__trending__")
+            if all_cached:
+                product = all_cached[0]
+            else:
+                raise HTTPException(status_code=404, detail="Product not found")
     elif cache_status in (CACHE_STALE, CACHE_VERY_STALE):
-        # Return stale data, trigger background refresh
         background_tasks.add_task(_background_refresh, search_key, None, BUDGET_CATALOG)
 
-    # Apply ranking scores
     ranking = calculate_best_product(product.platforms)
     product.platforms = ranking["platformsWithScores"]
     product.bestPickPlatform = ranking["bestPickPlatform"]

@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { Product } from '@/types/product';
 import { MOCK_PRODUCTS } from '@/data/mockProducts';
 
+// Base backend URL from env or default to local FastAPI server
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 interface SearchFilters {
   query?: string;
   category?: string;
@@ -11,6 +14,7 @@ interface SearchFilters {
   inStockOnly?: boolean;
 }
 
+// Hook for searching products via FastAPI backend with resilient fallback to local dataset
 export function useProductSearch(initialFilters: SearchFilters = {}) {
   const [filters, setFilters] = useState<SearchFilters>(initialFilters);
   const [products, setProducts] = useState<Product[]>([]);
@@ -22,12 +26,34 @@ export function useProductSearch(initialFilters: SearchFilters = {}) {
     setError(null);
 
     try {
-      // Simulate real API latency
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      // Build query string parameters for backend GET /search endpoint
+      const params = new URLSearchParams();
+      if (currentFilters.query) params.append('query', currentFilters.query);
+      if (currentFilters.category && currentFilters.category !== 'All') {
+        params.append('category', currentFilters.category);
+      }
+      if (currentFilters.sortBy) params.append('sortBy', currentFilters.sortBy);
+      if (currentFilters.inStockOnly) params.append('inStockOnly', 'true');
 
+      const url = `${API_BASE_URL}/search?${params.toString()}`;
+      
+      // Attempt live API fetch from backend server
+      const res = await fetch(url, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.results)) {
+          setProducts(data.results);
+          setLoading(false);
+          return;
+        }
+      }
+      throw new Error(`API returned status ${res.status}`);
+    } catch (err) {
+      console.warn('Backend API unavailable, falling back to local dataset:', err);
+
+      // Resilient local fallback filtering matching QuickCommerce schema
       let result = [...MOCK_PRODUCTS];
 
-      // Query filter
       if (currentFilters.query && currentFilters.query.trim() !== '') {
         const q = currentFilters.query.toLowerCase().trim();
         result = result.filter(
@@ -39,19 +65,16 @@ export function useProductSearch(initialFilters: SearchFilters = {}) {
         );
       }
 
-      // Category filter
       if (currentFilters.category && currentFilters.category !== 'All') {
         result = result.filter(
           (p) => p.category.toLowerCase() === currentFilters.category?.toLowerCase()
         );
       }
 
-      // Stock filter
       if (currentFilters.inStockOnly) {
         result = result.filter((p) => p.platforms.some((pl) => pl.inStock));
       }
 
-      // Sorting
       if (currentFilters.sortBy) {
         result.sort((a, b) => {
           const minPriceA = Math.min(...a.platforms.map((p) => p.price));
@@ -59,22 +82,14 @@ export function useProductSearch(initialFilters: SearchFilters = {}) {
           const maxRatingA = Math.max(...a.platforms.map((p) => p.rating));
           const maxRatingB = Math.max(...b.platforms.map((p) => p.rating));
 
-          if (currentFilters.sortBy === 'price_low') {
-            return minPriceA - minPriceB;
-          }
-          if (currentFilters.sortBy === 'price_high') {
-            return minPriceB - minPriceA;
-          }
-          if (currentFilters.sortBy === 'rating') {
-            return maxRatingB - maxRatingA;
-          }
-          return 0; // relevance default
+          if (currentFilters.sortBy === 'price_low') return minPriceA - minPriceB;
+          if (currentFilters.sortBy === 'price_high') return minPriceB - minPriceA;
+          if (currentFilters.sortBy === 'rating') return maxRatingB - maxRatingA;
+          return 0;
         });
       }
 
       setProducts(result);
-    } catch (err) {
-      setError('Failed to fetch search results. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -97,6 +112,7 @@ export function useProductSearch(initialFilters: SearchFilters = {}) {
   };
 }
 
+// Hook for loading product comparison detail via backend GET /compare/{id} endpoint
 export function useProductDetail(productId: string) {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -106,20 +122,32 @@ export function useProductDetail(productId: string) {
     async function loadProduct() {
       setLoading(true);
       setError(null);
+
       try {
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        const url = `${API_BASE_URL}/compare/${productId}`;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (res.ok) {
+          const data: Product = await res.json();
+          if (data && data.id) {
+            setProduct(data);
+            setLoading(false);
+            return;
+          }
+        }
+        throw new Error(`API status ${res.status}`);
+      } catch (e) {
+        console.warn('Backend detail endpoint unavailable, using local product lookup:', e);
         const found = MOCK_PRODUCTS.find((p) => p.id === productId);
         if (found) {
           setProduct(found);
         } else {
           setError('Product not found.');
         }
-      } catch (e) {
-        setError('Error loading product details.');
       } finally {
         setLoading(false);
       }
     }
+
     if (productId) {
       loadProduct();
     }
@@ -127,3 +155,4 @@ export function useProductDetail(productId: string) {
 
   return { product, loading, error };
 }
+

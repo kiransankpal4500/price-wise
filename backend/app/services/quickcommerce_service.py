@@ -185,33 +185,50 @@ FALLBACK_PRODUCTS: List[Dict[str, Any]] = [
     }
 ]
 
-# Normalizes raw QuickCommerce platform item dictionary into standardized Platform schema
+# Normalizes raw QuickCommerce platform item dictionary supporting snake_case, camelCase, and alternate field names
 def normalize_platform_data(platform_dict: Dict[str, Any]) -> Platform:
+    p_name = platform_dict.get("platformName") or platform_dict.get("platform_name") or platform_dict.get("platform") or platform_dict.get("store") or "Unknown Store"
+    price_val = float(platform_dict.get("price") or platform_dict.get("current_price") or 0.0)
+    orig_price = platform_dict.get("originalPrice") or platform_dict.get("original_price") or platform_dict.get("mrp")
+    rating_val = float(platform_dict.get("rating") or platform_dict.get("stars") or 0.0)
+    rev_cnt = platform_dict.get("reviewCount") or platform_dict.get("review_count") or platform_dict.get("reviews")
+    img_url = platform_dict.get("imageUrl") or platform_dict.get("image_url") or platform_dict.get("image") or ""
+    link_url = platform_dict.get("deeplink") or platform_dict.get("url") or platform_dict.get("link") or "#"
+    eta_val = platform_dict.get("deliveryEta") or platform_dict.get("delivery_eta") or platform_dict.get("eta")
+    stock_val = platform_dict.get("inStock") if platform_dict.get("inStock") is not None else platform_dict.get("in_stock", True)
+
     return Platform(
-        platformName=platform_dict.get("platformName", "Unknown Platform"),
-        price=float(platform_dict.get("price", 0.0)),
-        originalPrice=float(platform_dict["originalPrice"]) if platform_dict.get("originalPrice") else None,
-        rating=float(platform_dict.get("rating", 0.0)),
-        reviewCount=int(platform_dict["reviewCount"]) if platform_dict.get("reviewCount") is not None else None,
-        imageUrl=platform_dict.get("imageUrl", ""),
-        deeplink=platform_dict.get("deeplink", "#"),
-        deliveryEta=platform_dict.get("deliveryEta"),
-        inStock=bool(platform_dict.get("inStock", True)),
+        platformName=str(p_name),
+        price=price_val,
+        originalPrice=float(orig_price) if orig_price is not None else None,
+        rating=rating_val,
+        reviewCount=int(rev_cnt) if rev_cnt is not None else None,
+        imageUrl=str(img_url),
+        deeplink=str(link_url),
+        deliveryEta=str(eta_val) if eta_val is not None else None,
+        inStock=bool(stock_val),
         computedScore=platform_dict.get("computedScore")
     )
 
-# Normalizes raw QuickCommerce API product payload into standard Product Pydantic model
+# Normalizes raw QuickCommerce API product payload supporting multi-alias keys (id/product_id, name/product_name/title, etc.)
 def normalize_product_data(raw_data: Dict[str, Any]) -> Product:
-    platforms_raw = raw_data.get("platforms", [])
+    platforms_raw = raw_data.get("platforms") or raw_data.get("stores") or []
     normalized_platforms = [normalize_platform_data(p) for p in platforms_raw]
+    prod_id = raw_data.get("id") or raw_data.get("product_id") or raw_data.get("_id") or ""
+    prod_name = raw_data.get("name") or raw_data.get("product_name") or raw_data.get("title") or "Unnamed Product"
+    cat_name = raw_data.get("category") or raw_data.get("category_name") or "General"
+    desc_val = raw_data.get("description") or raw_data.get("desc")
+    main_img = raw_data.get("mainImage") or raw_data.get("main_image") or raw_data.get("image") or ""
+    best_pick = raw_data.get("bestPickPlatform") or raw_data.get("best_pick_platform")
+
     return Product(
-        id=str(raw_data.get("id", "")),
-        name=str(raw_data.get("name", "Unnamed Product")),
-        category=str(raw_data.get("category", "General")),
-        description=raw_data.get("description"),
-        mainImage=str(raw_data.get("mainImage", "")),
+        id=str(prod_id),
+        name=str(prod_name),
+        category=str(cat_name),
+        description=str(desc_val) if desc_val else None,
+        mainImage=str(main_img),
         platforms=normalized_platforms,
-        bestPickPlatform=raw_data.get("bestPickPlatform")
+        bestPickPlatform=str(best_pick) if best_pick else None
     )
 
 # Fetches product listings from QuickCommerce API with graceful error handling and fallback

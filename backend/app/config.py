@@ -9,6 +9,10 @@ load_dotenv()
 QUICKCOMMERCE_API_KEY: str = os.getenv("QUICKCOMMERCE_API_KEY", "")
 QUICKCOMMERCE_BASE_URL: str = os.getenv("QUICKCOMMERCE_BASE_URL", "https://api.quickcommerce.io/v1")
 
+# BrightData API credentials for e-commerce search and live price scraping
+BRIGHTDATA_API_KEY: str = os.getenv("BRIGHTDATA_API_KEY", "c976a32d-f2c0-4e39-97ff-5e7e4761a4d9")
+BRIGHTDATA_BASE_URL: str = os.getenv("BRIGHTDATA_BASE_URL", "https://api.brightdata.com")
+
 # Server configuration
 HOST: str = os.getenv("HOST", "0.0.0.0")
 PORT: int = int(os.getenv("PORT", "8000"))

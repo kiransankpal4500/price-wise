@@ -1,9 +1,10 @@
-# Service layer for communicating with the QuickCommerce API and fetching live product data
+# Service layer for communicating with QuickCommerce API and BrightData API for real live product data
 import httpx
 import logging
 from typing import List, Optional, Dict, Any
-from app.config import QUICKCOMMERCE_API_KEY, QUICKCOMMERCE_BASE_URL
+from app.config import QUICKCOMMERCE_API_KEY, QUICKCOMMERCE_BASE_URL, BRIGHTDATA_API_KEY
 from app.models.product_models import Product, Platform
+from app.services.brightdata_service import fetch_products_from_brightdata
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +113,9 @@ def normalize_product_data(raw_data: Dict[str, Any]) -> Product:
     )
 
 
-# ── API Call ──────────────────────────────────────────────────────────────────
+# ── API Calls ──────────────────────────────────────────────────────────────────
 
-# Fetches live product listings from QuickCommerce API — NO fallback data here
-# Budget checking and caching is the responsibility of the route layer, not this function
+# Fetches live product listings from QuickCommerce API and BrightData API
 async def fetch_products_from_quickcommerce(
     query: Optional[str] = None,
 ) -> List[Product]:
@@ -125,46 +125,53 @@ async def fetch_products_from_quickcommerce(
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        url = f"{QUICKCOMMERCE_BASE_URL}/products/search"
-        params = {"q": query} if query else {}
+    products: List[Product] = []
 
-        logger.info(f"[QC API] GET {url} | params={params}")
-        response = await client.get(url, headers=headers, params=params)
+    # 1. Primary call to QuickCommerce API
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            url = f"{QUICKCOMMERCE_BASE_URL}/products/search"
+            params = {"q": query} if query else {}
 
-        # Log the raw response structure on first call to help debug field names
-        logger.debug(f"[QC API] Status: {response.status_code}")
+            logger.info(f"[QC API] GET {url} | params={params}")
+            response = await client.get(url, headers=headers, params=params)
 
-        if response.status_code == 200:
-            data = response.json()
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, dict):
+                    raw_items = data.get("products") or data.get("results") or data.get("data") or []
+                elif isinstance(data, list):
+                    raw_items = data
+                else:
+                    raw_items = []
 
-            # Log top-level keys so we can verify field mapping is correct
-            if isinstance(data, dict):
-                logger.info(f"[QC API] Response keys: {list(data.keys())}")
-                raw_items = data.get("products") or data.get("results") or data.get("data") or []
-            elif isinstance(data, list):
-                raw_items = data
+                if raw_items:
+                    logger.info(f"[QC API] Received {len(raw_items)} product(s) from QuickCommerce API.")
+                    products.extend([normalize_product_data(item) for item in raw_items])
             else:
-                raw_items = []
+                logger.warning(f"[QC API] Status {response.status_code}: {response.text[:200]}")
+    except Exception as e:
+        logger.error(f"[QC API] QuickCommerce call failed: {e}")
 
-            if not raw_items:
-                logger.warning("[QC API] Response was 200 but no product items found in payload.")
-                return []
+    # 2. Call BrightData API using BRIGHTDATA_API_KEY for supplementary or fallback live pricing data
+    if BRIGHTDATA_API_KEY:
+        try:
+            logger.info(f"[BrightData API] Querying live prices for '{query}'...")
+            bd_products = await fetch_products_from_brightdata(query)
+            if bd_products:
+                logger.info(f"[BrightData API] Retrieved {len(bd_products)} products from BrightData.")
+                products.extend(bd_products)
+        except Exception as e:
+            logger.error(f"[BrightData API] Error querying BrightData: {e}")
 
-            logger.info(f"[QC API] Received {len(raw_items)} product(s) from API.")
-            return [normalize_product_data(item) for item in raw_items]
+    if not products:
+        logger.warning("[Data Provider] No products returned from QuickCommerce or BrightData APIs.")
+        raise RuntimeError("No live API data returned from QuickCommerce or BrightData providers.")
 
-        else:
-            # Raise so the route layer knows the call failed and should not increment budget
-            logger.error(
-                f"[QC API] Request failed: status={response.status_code} body={response.text[:200]}"
-            )
-            raise RuntimeError(
-                f"QuickCommerce API returned status {response.status_code}"
-            )
+    return products
 
 
-# Fetches a single product by ID — searches all cached keys then falls back to API
+# Fetches a single product by ID — searches across all providers then filters by ID
 async def fetch_product_by_id(product_id: str) -> Optional[Product]:
     """Fetches a single product by doing a search and filtering by ID."""
     all_products = await fetch_products_from_quickcommerce()

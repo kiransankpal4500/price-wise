@@ -1,5 +1,6 @@
 # Product API routes — all endpoints follow cache-first architecture with 50-call budget enforcement
 import logging
+import asyncio
 from typing import Optional, List
 from datetime import datetime, timezone
 from fastapi import APIRouter, Query, HTTPException, BackgroundTasks
@@ -94,14 +95,17 @@ async def _fetch_from_api_and_cache(
 
     try:
         logger.info(f"[API] Calling live API providers for query='{query}' ({budget_type})")
-        products = await fetch_products_from_quickcommerce(query=query)
+        products = await asyncio.wait_for(
+            fetch_products_from_quickcommerce(query=query),
+            timeout=3.0,
+        )
         if products:
             await increment_api_call()
             await save_products_to_cache(products, search_key)
             return products
         return None
     except Exception as e:
-        logger.error(f"[API] Provider call failed for key='{search_key}': {e}")
+        logger.error(f"[API] Provider call failed or timed out for key='{search_key}': {e}")
         return None
 
 

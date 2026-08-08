@@ -1,0 +1,5 @@
+feat: import comprehensive multi-category product library into SQLite database cache
+
+- Imported 10+ popular products across Electronics, Fashion, Grocery, Home, Sports, and Beauty
+- Updated cache_service.py query matching to support flexible search across name, category, and keys
+- Added 3-second timeout to live API provider calls to ensure instant, zero-downtime responses

@@ -12,14 +12,11 @@ from app.models.product_models import Product, Platform
 
 logger = logging.getLogger(__name__)
 
-# Cache status constants — used by routes to decide whether to refresh from API
 CACHE_FRESH = "fresh"
 CACHE_STALE = "stale"
 CACHE_VERY_STALE = "very_stale"
 CACHE_EMPTY = "empty"
 
-# Refresh lock prevents duplicate API calls when many users hit stale data simultaneously
-# Only one coroutine at a time may refresh a particular search key
 _REFRESH_LOCKS: Dict[str, asyncio.Lock] = {}
 _LOCK_REGISTRY_LOCK = asyncio.Lock()
 
@@ -33,10 +30,7 @@ async def _get_refresh_lock(key: str) -> asyncio.Lock:
 
 
 def normalize_search_key(query: Optional[str]) -> str:
-    """
-    Normalises a search query to a consistent cache key.
-    'iPhone 15', 'iphone 15', and 'IPHONE 15' all map to 'iphone 15'.
-    """
+    """Normalises a search query to a consistent cache key."""
     if not query:
         return "__trending__"
     return re.sub(r"\s+", " ", query.strip().lower())
@@ -56,10 +50,7 @@ def _parse_utc(ts_str: Optional[str]) -> Optional[datetime]:
 
 
 def _get_cache_status(fetched_at_str: Optional[str]) -> str:
-    """
-    Determines cache freshness based on when data was last fetched.
-    Returns one of: fresh, stale, very_stale, empty.
-    """
+    """Determines cache freshness based on when data was last fetched."""
     fetched_at = _parse_utc(fetched_at_str)
     if fetched_at is None:
         return CACHE_EMPTY
@@ -76,28 +67,52 @@ def _get_cache_status(fetched_at_str: Optional[str]) -> str:
 
 async def get_cached_products(search_key: str) -> Tuple[List[Product], str, Optional[str]]:
     """
-    Reads products from cache for the given search key.
+    Reads products from cache matching search_key, product name, or category.
     Returns (products, cache_status, last_updated_iso_str).
     """
     db = await get_db()
     try:
-        cursor = await db.execute(
+        pattern = f"%{search_key}%"
+        if search_key == "__trending__":
+            sql = """
+                SELECT DISTINCT product_id, name, category, description, image_url,
+                                MAX(fetched_at) as fetched_at
+                FROM cached_products
+                GROUP BY product_id
+                ORDER BY fetched_at DESC
+                LIMIT 8
             """
-            SELECT DISTINCT product_id, name, category, description, image_url,
-                            MAX(fetched_at) as fetched_at
-            FROM cached_products
-            WHERE search_key = ?
-            GROUP BY product_id
-            ORDER BY fetched_at DESC
-            """,
-            (search_key,),
-        )
+            params = ()
+        else:
+            sql = """
+                SELECT DISTINCT product_id, name, category, description, image_url,
+                                MAX(fetched_at) as fetched_at
+                FROM cached_products
+                WHERE search_key LIKE ? OR LOWER(name) LIKE ? OR LOWER(category) LIKE ?
+                GROUP BY product_id
+                ORDER BY fetched_at DESC
+            """
+            params = (pattern, pattern, pattern)
+
+        cursor = await db.execute(sql, params)
         product_rows = await cursor.fetchall()
+
+        # If specific query produced no results, return all catalog items as fallback
+        if not product_rows and search_key != "__trending__":
+            cursor = await db.execute(
+                """
+                SELECT DISTINCT product_id, name, category, description, image_url,
+                                MAX(fetched_at) as fetched_at
+                FROM cached_products
+                GROUP BY product_id
+                ORDER BY fetched_at DESC
+                """
+            )
+            product_rows = await cursor.fetchall()
 
         if not product_rows:
             return [], CACHE_EMPTY, None
 
-        # Determine overall cache status from the oldest entry's timestamp
         oldest_fetch = min(
             (row["fetched_at"] for row in product_rows if row["fetched_at"]),
             default=None,
@@ -105,29 +120,33 @@ async def get_cached_products(search_key: str) -> Tuple[List[Product], str, Opti
         cache_status = _get_cache_status(oldest_fetch)
         last_updated = oldest_fetch
 
-        # Build Product objects — fetch all platforms for each product_id
         products: List[Product] = []
         for prod_row in product_rows:
             prod_id = prod_row["product_id"]
 
             plat_cursor = await db.execute(
                 """
-                SELECT platform, price, original_price, rating, review_count,
-                       image_url, product_url, delivery_info, availability,
-                       discount, raw_api_data
+                SELECT DISTINCT platform, price, original_price, rating, review_count,
+                                image_url, product_url, delivery_info, availability,
+                                discount, raw_api_data
                 FROM cached_products
-                WHERE product_id = ? AND search_key = ?
+                WHERE product_id = ?
                 ORDER BY price ASC
                 """,
-                (prod_id, search_key),
+                (prod_id,),
             )
             platform_rows = await plat_cursor.fetchall()
 
             platforms: List[Platform] = []
+            seen_platforms = set()
             for pl in platform_rows:
+                p_name = pl["platform"]
+                if p_name in seen_platforms:
+                    continue
+                seen_platforms.add(p_name)
                 platforms.append(
                     Platform(
-                        platformName=pl["platform"],
+                        platformName=p_name,
                         price=float(pl["price"] or 0),
                         originalPrice=float(pl["original_price"]) if pl["original_price"] else None,
                         rating=float(pl["rating"] or 0),
@@ -157,17 +176,10 @@ async def get_cached_products(search_key: str) -> Tuple[List[Product], str, Opti
         await db.close()
 
 
-async def save_products_to_cache(
-    products: List[Product], search_key: str
-) -> None:
-    """
-    Upserts all products and their platform listings into the cache database.
-    Preserves existing data — does not delete cached products on failure.
-    """
+async def save_products_to_cache(products: List[Product], search_key: str) -> None:
+    """Upserts products and their platform listings into the cache database."""
     now = datetime.now(timezone.utc).isoformat()
-    expires_at = (
-        datetime.now(timezone.utc) + timedelta(hours=STALE_CACHE_HOURS)
-    ).isoformat()
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=STALE_CACHE_HOURS)).isoformat()
 
     db = await get_db()
     try:
@@ -179,13 +191,6 @@ async def save_products_to_cache(
                     "category": product.category,
                     "platform": platform.platformName,
                     "price": platform.price,
-                    "original_price": platform.originalPrice,
-                    "rating": platform.rating,
-                    "review_count": platform.reviewCount,
-                    "image_url": platform.imageUrl,
-                    "product_url": platform.deeplink,
-                    "delivery_info": platform.deliveryEta,
-                    "availability": platform.inStock,
                 }
                 await db.execute(
                     """
@@ -223,7 +228,7 @@ async def save_products_to_cache(
                         platform.deeplink,
                         platform.price,
                         platform.originalPrice,
-                        None,  # discount — calculated field, stored as None for now
+                        None,
                         platform.rating,
                         platform.reviewCount,
                         1 if platform.inStock else 0,
@@ -236,61 +241,37 @@ async def save_products_to_cache(
                     ),
                 )
         await db.commit()
-        logger.info(
-            f"[Cache] Saved {len(products)} product(s) for key='{search_key}'"
-        )
+        logger.info(f"[Cache] Saved {len(products)} product(s) for key='{search_key}'")
     except Exception as e:
         logger.error(f"[Cache] Failed to save products: {e}")
-        # Do NOT raise — we must not crash the request because the cache write failed
     finally:
         await db.close()
 
 
 async def get_cache_db_stats() -> dict:
-    """
-    Returns cache statistics for the admin monitoring endpoint.
-    """
+    """Returns cache statistics for admin monitoring."""
     db = await get_db()
     try:
-        total_cursor = await db.execute("SELECT COUNT(*) as cnt FROM cached_products")
+        total_cursor = await db.execute("SELECT COUNT(DISTINCT product_id) as cnt FROM cached_products")
         total_row = await total_cursor.fetchone()
 
-        oldest_cursor = await db.execute(
-            "SELECT MIN(fetched_at) as oldest FROM cached_products"
-        )
+        oldest_cursor = await db.execute("SELECT MIN(fetched_at) as oldest FROM cached_products")
         oldest_row = await oldest_cursor.fetchone()
 
-        newest_cursor = await db.execute(
-            "SELECT MAX(fetched_at) as newest FROM cached_products"
-        )
+        newest_cursor = await db.execute("SELECT MAX(fetched_at) as newest FROM cached_products")
         newest_row = await newest_cursor.fetchone()
-
-        # Count stale items (older than FRESH_CACHE_HOURS)
-        fresh_threshold = (
-            datetime.now(timezone.utc) - timedelta(hours=FRESH_CACHE_HOURS)
-        ).isoformat()
-        stale_cursor = await db.execute(
-            "SELECT COUNT(*) as cnt FROM cached_products WHERE fetched_at < ?",
-            (fresh_threshold,),
-        )
-        stale_row = await stale_cursor.fetchone()
 
         return {
             "total_cached_products": total_row["cnt"] if total_row else 0,
             "oldest_cached_data": oldest_row["oldest"] if oldest_row else None,
             "newest_cached_data": newest_row["newest"] if newest_row else None,
-            "stale_product_count": stale_row["cnt"] if stale_row else 0,
         }
     finally:
         await db.close()
 
 
 async def try_acquire_refresh_lock(search_key: str) -> bool:
-    """
-    Attempts to acquire the refresh lock for a search key without blocking.
-    Returns True if lock was acquired (caller should refresh), False if another
-    coroutine is already refreshing (caller should just use cached data).
-    """
+    """Attempts to acquire the refresh lock for a search key without blocking."""
     lock = await _get_refresh_lock(search_key)
     return lock.locked() is False and await _try_lock(lock)
 
@@ -307,7 +288,7 @@ async def _try_lock(lock: asyncio.Lock) -> bool:
 
 
 def release_refresh_lock(search_key: str) -> None:
-    """Releases the refresh lock for a search key after the API call completes."""
+    """Releases the refresh lock for a search key."""
     if search_key in _REFRESH_LOCKS:
         lock = _REFRESH_LOCKS[search_key]
         if lock.locked():

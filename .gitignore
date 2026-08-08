@@ -17,4 +17,16 @@ Thumbs.db
 # Vercel
 .vercel
 
+# SQLite cache database — never commit, generated at runtime
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
 .vercel

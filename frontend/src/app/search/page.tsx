@@ -7,7 +7,7 @@ import { SearchFilters } from '@/components/search/SearchFilters';
 import { ProductCard } from '@/components/product/ProductCard';
 import { Loader } from '@/components/ui/Loader';
 import { useProductSearch } from '@/hooks/useProductSearch';
-import { SearchX } from 'lucide-react';
+import { SearchX, Clock, Wifi, WifiOff } from 'lucide-react';
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -16,7 +16,7 @@ function SearchContent() {
   const initialQuery = searchParams.get('q') || '';
   const initialCategory = searchParams.get('category') || 'All';
 
-  const { products, loading, filters, updateFilters } = useProductSearch({
+  const { products, loading, filters, updateFilters, cacheInfo } = useProductSearch({
     query: initialQuery,
     category: initialCategory,
     sortBy: 'relevance',
@@ -70,6 +70,25 @@ function SearchContent() {
         onSortChange={(sort) => updateFilters({ sortBy: sort })}
         onStockToggle={(checked) => updateFilters({ inStockOnly: checked })}
       />
+
+      {/* Cache Status Banner */}
+      {cacheInfo && !loading && (
+        <div className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-semibold ${
+          cacheInfo.cache_status === 'fresh' || cacheInfo.cache_status === 'live'
+            ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+            : cacheInfo.cache_status === 'stale' || cacheInfo.cache_status === 'very_stale'
+            ? 'bg-amber-50 border border-amber-200 text-amber-700'
+            : 'bg-slate-100 border border-slate-200 text-slate-600'
+        }`}>
+          {cacheInfo.cache_status === 'fresh' || cacheInfo.cache_status === 'live'
+            ? <Wifi className="w-3.5 h-3.5" />
+            : cacheInfo.data_source === 'local'
+            ? <WifiOff className="w-3.5 h-3.5" />
+            : <Clock className="w-3.5 h-3.5" />
+          }
+          <span>{cacheInfo.message || 'Product data loaded.'}</span>
+        </div>
+      )}
 
       {/* Results Header */}
       <div className="flex items-center justify-between">

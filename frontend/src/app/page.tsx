@@ -19,7 +19,10 @@ import {
   Home as HomeIcon,
   Dumbbell,
   Sparkle,
-  CheckCircle2
+  CheckCircle2,
+  Clock,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 
 const QUICK_TAGS = [
@@ -42,8 +45,8 @@ const CATEGORIES = [
 ];
 
 export default function HomePage() {
-  // Was using static mock data, now fetches real trending products from backend GET /trending endpoint
-  const { products, loading } = useTrendingProducts();
+  // Fetches real trending products from backend /trending endpoint with cache metadata
+  const { products, loading, cacheInfo } = useTrendingProducts();
 
   return (
     <div className="space-y-16 pb-16">
@@ -191,8 +194,31 @@ export default function HomePage() {
           </Link>
         </div>
 
+        {/* Cache Status Banner — shows data freshness and source */}
+        {cacheInfo && !loading && (
+          <div className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-semibold ${
+            cacheInfo.cache_status === 'fresh' || cacheInfo.cache_status === 'live'
+              ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+              : cacheInfo.cache_status === 'stale' || cacheInfo.cache_status === 'very_stale'
+              ? 'bg-amber-50 border border-amber-200 text-amber-700'
+              : 'bg-slate-100 border border-slate-200 text-slate-600'
+          }`}>
+            {cacheInfo.cache_status === 'fresh' || cacheInfo.cache_status === 'live'
+              ? <Wifi className="w-3.5 h-3.5" />
+              : cacheInfo.data_source === 'local'
+              ? <WifiOff className="w-3.5 h-3.5" />
+              : <Clock className="w-3.5 h-3.5" />
+            }
+            <span>{cacheInfo.message || 'Product data loaded.'}</span>
+          </div>
+        )}
+
         {loading ? (
           <Loader text="Loading trending comparisons..." />
+        ) : products.length === 0 ? (
+          <div className="text-center py-12 text-slate-500 text-sm">
+            No trending products available right now.
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {products.slice(0, 8).map((product) => (

@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Product } from '@/types/product';
+import { Product, CacheInfo, SearchApiResponse, TrendingApiResponse } from '@/types/product';
 import { DEV_FALLBACK_PRODUCTS } from '@/dev-only/mockProducts';
 
-// Base backend URL from env or default to local FastAPI server
+// Base backend URL from env — points to local FastAPI server (localhost:8000) by default
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 interface SearchFilters {
@@ -14,12 +14,15 @@ interface SearchFilters {
   inStockOnly?: boolean;
 }
 
-// Hook for searching products via FastAPI backend with resilient fallback to local dataset
+// ── useProductSearch ──────────────────────────────────────────────────────────
+// Fetches products from backend GET /search with cache-first response.
+// Falls back to local dev dataset if backend is unreachable.
 export function useProductSearch(initialFilters: SearchFilters = {}) {
   const [filters, setFilters] = useState<SearchFilters>(initialFilters);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheInfo, setCacheInfo] = useState<CacheInfo | null>(null);
 
   const fetchProducts = useCallback(async (currentFilters: SearchFilters) => {
     setLoading(true);
@@ -36,25 +39,26 @@ export function useProductSearch(initialFilters: SearchFilters = {}) {
       if (currentFilters.inStockOnly) params.append('inStockOnly', 'true');
 
       const url = `${API_BASE_URL}/search?${params.toString()}`;
-      
-      // Attempt live API fetch from backend server
+
+      // Fetch from backend — response includes products + cache metadata
       const res = await fetch(url, { cache: 'no-store' });
       if (res.ok) {
-        const data = await res.json();
+        const data: SearchApiResponse = await res.json();
         if (data && Array.isArray(data.results)) {
           setProducts(data.results);
-          setLoading(false);
+          // Store cache info so UI can show "Updated X hours ago" banner
+          if (data.cache_info) setCacheInfo(data.cache_info);
           return;
         }
       }
       throw new Error(`API returned status ${res.status}`);
     } catch (err) {
-      console.warn('Backend API unavailable, falling back to local dataset:', err);
+      // Backend unavailable — use local dev fallback silently
+      console.warn('[PriceWise] Backend unavailable, using local dev fallback:', err);
 
-      // Resilient local fallback filtering matching QuickCommerce schema
       let result = [...DEV_FALLBACK_PRODUCTS];
 
-      if (currentFilters.query && currentFilters.query.trim() !== '') {
+      if (currentFilters.query?.trim()) {
         const q = currentFilters.query.toLowerCase().trim();
         result = result.filter(
           (p) =>
@@ -64,32 +68,29 @@ export function useProductSearch(initialFilters: SearchFilters = {}) {
             p.platforms.some((pl) => pl.platformName.toLowerCase().includes(q))
         );
       }
-
       if (currentFilters.category && currentFilters.category !== 'All') {
         result = result.filter(
           (p) => p.category.toLowerCase() === currentFilters.category?.toLowerCase()
         );
       }
-
       if (currentFilters.inStockOnly) {
         result = result.filter((p) => p.platforms.some((pl) => pl.inStock));
       }
-
-      if (currentFilters.sortBy) {
-        result.sort((a, b) => {
-          const minPriceA = Math.min(...a.platforms.map((p) => p.price));
-          const minPriceB = Math.min(...b.platforms.map((p) => p.price));
-          const maxRatingA = Math.max(...a.platforms.map((p) => p.rating));
-          const maxRatingB = Math.max(...b.platforms.map((p) => p.rating));
-
-          if (currentFilters.sortBy === 'price_low') return minPriceA - minPriceB;
-          if (currentFilters.sortBy === 'price_high') return minPriceB - minPriceA;
-          if (currentFilters.sortBy === 'rating') return maxRatingB - maxRatingA;
-          return 0;
-        });
+      if (currentFilters.sortBy === 'price_low') {
+        result.sort((a, b) => Math.min(...a.platforms.map((p) => p.price)) - Math.min(...b.platforms.map((p) => p.price)));
+      } else if (currentFilters.sortBy === 'price_high') {
+        result.sort((a, b) => Math.min(...b.platforms.map((p) => p.price)) - Math.min(...a.platforms.map((p) => p.price)));
+      } else if (currentFilters.sortBy === 'rating') {
+        result.sort((a, b) => Math.max(...b.platforms.map((p) => p.rating)) - Math.max(...a.platforms.map((p) => p.rating)));
       }
 
       setProducts(result);
+      // Mark that we're showing dev fallback data
+      setCacheInfo({
+        cache_status: 'stale',
+        data_source: 'local',
+        message: 'Backend offline — showing local demo data.',
+      });
     } finally {
       setLoading(false);
     }
@@ -103,20 +104,17 @@ export function useProductSearch(initialFilters: SearchFilters = {}) {
     setFilters((prev) => ({ ...prev, ...newFilters }));
   };
 
-  return {
-    products,
-    loading,
-    error,
-    filters,
-    updateFilters,
-  };
+  return { products, loading, error, filters, updateFilters, cacheInfo };
 }
 
-// Hook for loading product comparison detail via backend GET /compare/{id} endpoint
+
+// ── useProductDetail ──────────────────────────────────────────────────────────
+// Fetches a single product from backend GET /compare/{id} with cache fallback.
 export function useProductDetail(productId: string) {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheInfo, setCacheInfo] = useState<CacheInfo | null>(null);
 
   useEffect(() => {
     async function loadProduct() {
@@ -128,18 +126,23 @@ export function useProductDetail(productId: string) {
         const res = await fetch(url, { cache: 'no-store' });
         if (res.ok) {
           const data: Product = await res.json();
-          if (data && data.id) {
+          if (data?.id) {
             setProduct(data);
-            setLoading(false);
             return;
           }
         }
-        throw new Error(`API status ${res.status}`);
+        throw new Error(`Status ${res.status}`);
       } catch (e) {
-        console.warn('Backend detail endpoint unavailable, using local product lookup:', e);
+        // Backend unavailable — try local dev fallback
+        console.warn('[PriceWise] Backend unavailable for product detail:', e);
         const found = DEV_FALLBACK_PRODUCTS.find((p) => p.id === productId);
         if (found) {
           setProduct(found);
+          setCacheInfo({
+            cache_status: 'stale',
+            data_source: 'local',
+            message: 'Backend offline — showing local demo data.',
+          });
         } else {
           setError('Product not found.');
         }
@@ -148,39 +151,48 @@ export function useProductDetail(productId: string) {
       }
     }
 
-    if (productId) {
-      loadProduct();
-    }
+    if (productId) loadProduct();
   }, [productId]);
 
-  return { product, loading, error };
+  return { product, loading, error, cacheInfo };
 }
 
-// Hook for fetching real trending products directly from backend GET /trending endpoint
+
+// ── useTrendingProducts ───────────────────────────────────────────────────────
+// Fetches real trending products from backend GET /trending with cache metadata.
+// Falls back to local dev data if backend is unreachable.
 export function useTrendingProducts() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheInfo, setCacheInfo] = useState<CacheInfo | null>(null);
 
   useEffect(() => {
     async function loadTrending() {
       setLoading(true);
       setError(null);
+
       try {
-        const url = `${API_BASE_URL}/trending`;
-        const res = await fetch(url, { cache: 'no-store' });
+        const res = await fetch(`${API_BASE_URL}/trending`, { cache: 'no-store' });
         if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setProducts(data);
-            setLoading(false);
+          const data: TrendingApiResponse = await res.json();
+          if (data && Array.isArray(data.results)) {
+            setProducts(data.results);
+            // Store cache info so UI can show last_updated banner
+            if (data.cache_info) setCacheInfo(data.cache_info);
             return;
           }
         }
         throw new Error(`Status ${res.status}`);
       } catch (err) {
-        console.warn('Backend /trending endpoint unavailable, using local fallback:', err);
+        // Backend unavailable — fall back silently to local dev dataset
+        console.warn('[PriceWise] Backend unavailable for trending, using local dev fallback:', err);
         setProducts(DEV_FALLBACK_PRODUCTS);
+        setCacheInfo({
+          cache_status: 'stale',
+          data_source: 'local',
+          message: 'Backend offline — showing local demo data.',
+        });
       } finally {
         setLoading(false);
       }
@@ -188,7 +200,5 @@ export function useTrendingProducts() {
     loadTrending();
   }, []);
 
-  return { products, loading, error };
+  return { products, loading, error, cacheInfo };
 }
-
-

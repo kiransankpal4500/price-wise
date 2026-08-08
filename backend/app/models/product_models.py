@@ -2,6 +2,7 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
+
 # Model representing an individual e-commerce or quick-commerce platform listing
 class Platform(BaseModel):
     platformName: str = Field(..., description="Name of the platform, e.g., Amazon, Blinkit")
@@ -15,6 +16,7 @@ class Platform(BaseModel):
     inStock: bool = Field(True, description="Stock availability status")
     computedScore: Optional[int] = Field(None, description="Calculated 0-100 score from recommendation algorithm")
 
+
 # Model representing a product across all platform listings
 class Product(BaseModel):
     id: str = Field(..., description="Unique product identifier")
@@ -25,8 +27,25 @@ class Product(BaseModel):
     platforms: List[Platform] = Field(..., description="Listings of this product across different stores")
     bestPickPlatform: Optional[str] = Field(None, description="Store name identified as the best overall deal")
 
-# Response wrapper model for search endpoint results
+
+# Metadata about where and when product data came from — shown in the frontend
+class CacheMetadata(BaseModel):
+    last_updated: Optional[str] = Field(None, description="ISO timestamp of when data was last fetched from API")
+    cache_status: str = Field("unknown", description="fresh / stale / very_stale / empty / live")
+    data_source: str = Field("cache", description="Source of data: QuickCommerce or cache")
+    message: Optional[str] = Field(None, description="Human-readable status message for the frontend to display")
+
+
+# Response wrapper model for search endpoint results — includes cache metadata
 class SearchResponse(BaseModel):
     query: Optional[str] = Field(None, description="Search query string executed")
     total: int = Field(..., description="Total count of products matching search")
     results: List[Product] = Field(..., description="List of matched products with computed best picks")
+    cache_info: Optional[CacheMetadata] = Field(None, description="Cache freshness and data source information")
+
+
+# Response wrapper for trending products endpoint
+class TrendingResponse(BaseModel):
+    total: int = Field(..., description="Number of trending products returned")
+    results: List[Product] = Field(..., description="Trending products with computed scores")
+    cache_info: Optional[CacheMetadata] = Field(None, description="Cache freshness and data source information")

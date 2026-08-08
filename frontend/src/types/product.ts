@@ -20,3 +20,26 @@ export interface Product {
   platforms: Platform[];       // same product's listings across all platforms
   bestPickPlatform?: string;   // computed — which platform wins on score
 }
+
+// Cache metadata returned by backend with every product response
+export interface CacheInfo {
+  last_updated?: string;       // ISO timestamp of when data was last fetched from API
+  cache_status: 'fresh' | 'stale' | 'very_stale' | 'live' | 'empty' | 'unavailable' | 'unknown';
+  data_source: string;         // 'cache' | 'QuickCommerce' | 'none'
+  message?: string;            // human-readable status for the UI
+}
+
+// Full search API response shape
+export interface SearchApiResponse {
+  query?: string;
+  total: number;
+  results: Product[];
+  cache_info?: CacheInfo;
+}
+
+// Trending API response shape
+export interface TrendingApiResponse {
+  total: number;
+  results: Product[];
+  cache_info?: CacheInfo;
+}

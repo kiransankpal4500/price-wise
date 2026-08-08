@@ -22,6 +22,16 @@ app.add_middleware(
 # Registers product endpoints for search and comparison features
 app.include_router(product_router)
 
+# Confirms QuickCommerce API Key loading from .env upon server startup
+@app.on_event("startup")
+async def startup_event():
+    from app.config import QUICKCOMMERCE_API_KEY
+    if QUICKCOMMERCE_API_KEY:
+        masked = QUICKCOMMERCE_API_KEY[:8] + "..." + QUICKCOMMERCE_API_KEY[-4:]
+        print(f"[Startup] QuickCommerce API Key loaded successfully from .env: {masked}")
+    else:
+        print("[Startup] WARNING: QUICKCOMMERCE_API_KEY is missing in .env configuration!")
+
 # Root endpoint providing health check status and interactive API documentation link
 @app.get("/")
 async def root():

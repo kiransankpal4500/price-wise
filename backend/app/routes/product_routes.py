@@ -73,3 +73,21 @@ async def compare_product(product_id: str):
     product.bestPickPlatform = ranking_result["bestPickPlatform"]
 
     return product
+
+# Endpoint: GET /trending — fetches real-time trending deals across top categories from backend
+@router.get("/trending", response_model=List[Product])
+@router.get("/api/trending", response_model=List[Product])
+async def get_trending_products():
+    # Fetches real live products from QuickCommerce service layer
+    products = await fetch_products_from_quickcommerce(query=None)
+
+    # Process each product through recommendation ranking algorithm to calculate store scores and best pick
+    processed_products = []
+    for prod in products:
+        ranking_result = calculate_best_product(prod.platforms)
+        prod.platforms = ranking_result["platformsWithScores"]
+        prod.bestPickPlatform = ranking_result["bestPickPlatform"]
+        processed_products.append(prod)
+
+    return processed_products
+

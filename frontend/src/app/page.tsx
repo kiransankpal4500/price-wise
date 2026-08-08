@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { SearchBar } from '@/components/search/SearchBar';
 import { ProductCard } from '@/components/product/ProductCard';
 import { Loader } from '@/components/ui/Loader';
-import { useProductSearch } from '@/hooks/useProductSearch';
+import { useTrendingProducts } from '@/hooks/useProductSearch';
 import {
   Sparkles,
   Zap,
@@ -42,7 +42,8 @@ const CATEGORIES = [
 ];
 
 export default function HomePage() {
-  const { products, loading } = useProductSearch({});
+  // Was using static mock data, now fetches real trending products from backend GET /trending endpoint
+  const { products, loading } = useTrendingProducts();
 
   return (
     <div className="space-y-16 pb-16">

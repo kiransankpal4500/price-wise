@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Product } from '@/types/product';
-import { MOCK_PRODUCTS } from '@/data/mockProducts';
+import { DEV_FALLBACK_PRODUCTS } from '@/dev-only/mockProducts';
 
 // Base backend URL from env or default to local FastAPI server
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -52,7 +52,7 @@ export function useProductSearch(initialFilters: SearchFilters = {}) {
       console.warn('Backend API unavailable, falling back to local dataset:', err);
 
       // Resilient local fallback filtering matching QuickCommerce schema
-      let result = [...MOCK_PRODUCTS];
+      let result = [...DEV_FALLBACK_PRODUCTS];
 
       if (currentFilters.query && currentFilters.query.trim() !== '') {
         const q = currentFilters.query.toLowerCase().trim();
@@ -137,7 +137,7 @@ export function useProductDetail(productId: string) {
         throw new Error(`API status ${res.status}`);
       } catch (e) {
         console.warn('Backend detail endpoint unavailable, using local product lookup:', e);
-        const found = MOCK_PRODUCTS.find((p) => p.id === productId);
+        const found = DEV_FALLBACK_PRODUCTS.find((p) => p.id === productId);
         if (found) {
           setProduct(found);
         } else {
@@ -155,4 +155,40 @@ export function useProductDetail(productId: string) {
 
   return { product, loading, error };
 }
+
+// Hook for fetching real trending products directly from backend GET /trending endpoint
+export function useTrendingProducts() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadTrending() {
+      setLoading(true);
+      setError(null);
+      try {
+        const url = `${API_BASE_URL}/trending`;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setProducts(data);
+            setLoading(false);
+            return;
+          }
+        }
+        throw new Error(`Status ${res.status}`);
+      } catch (err) {
+        console.warn('Backend /trending endpoint unavailable, using local fallback:', err);
+        setProducts(DEV_FALLBACK_PRODUCTS);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadTrending();
+  }, []);
+
+  return { products, loading, error };
+}
+
 

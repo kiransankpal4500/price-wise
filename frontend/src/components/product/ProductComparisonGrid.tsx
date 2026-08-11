@@ -3,7 +3,7 @@ import { Platform } from '@/types/product';
 import { BestPickBadge } from './BestPickBadge';
 import { RatingStars } from './RatingStars';
 import { Button } from '@/components/ui/Button';
-import { ExternalLink, Clock, CheckCircle2, XCircle, TrendingDown, Award } from 'lucide-react';
+import { ExternalLink, Clock, CheckCircle2, XCircle, TrendingDown, Award, AlertCircle } from 'lucide-react';
 
 interface ProductComparisonGridProps {
   platforms: Platform[];
@@ -159,24 +159,37 @@ export function ProductComparisonGrid({
 
               {/* Buy Button CTA */}
               <div className="pt-5">
-                <a
-                  href={platform.deeplink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full"
-                >
-                  <button
-                    disabled={!platform.inStock}
-                    className={`w-full py-3 px-4 rounded-full font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md ${
-                      isBestPick
-                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-500/20'
-                        : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-violet-500/20'
-                    }`}
+                {platform.product_url && platform.product_url !== '#' && platform.product_url !== '' ? (
+                  <a
+                    href={platform.product_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full"
                   >
-                    <span>Buy on {platform.platformName}</span>
-                    <ExternalLink className="w-4 h-4 opacity-90" />
+                    <button
+                      disabled={!platform.inStock}
+                      className={`w-full py-3 px-4 rounded-full font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md ${
+                        !platform.inStock
+                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                          : isBestPick
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-500/20'
+                          : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-violet-500/20'
+                      }`}
+                    >
+                      <span>{platform.inStock ? `Buy on ${platform.platformName}` : 'Out of Stock'}</span>
+                      {platform.inStock && <ExternalLink className="w-4 h-4 opacity-90" />}
+                    </button>
+                  </a>
+                ) : (
+                  <button
+                    disabled
+                    className="w-full py-3 px-4 rounded-full font-bold text-xs flex items-center justify-center gap-2 bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                    title="Exact product URL could not be verified for this store listing"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 opacity-70" />
+                    <span>Product link unavailable</span>
                   </button>
-                </a>
+                )}
               </div>
             </div>
           );

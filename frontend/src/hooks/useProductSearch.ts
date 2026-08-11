@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Product, CacheInfo, SearchApiResponse, TrendingApiResponse } from '@/types/product';
 import { DEV_FALLBACK_PRODUCTS } from '@/dev-only/mockProducts';
 
-// Base backend URL from env — points to local FastAPI server (localhost:8000) by default
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Base backend URL from env — defaults to relative /api endpoint on Vercel or local proxy
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 interface SearchFilters {
   query?: string;

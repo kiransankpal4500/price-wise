@@ -1,0 +1,13 @@
+{
+  "name": "pricewise-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm run build",
+    "dev": "cd frontend && npm run dev",
+    "start": "cd frontend && npm run start"
+  },
+  "dependencies": {
+    "next": "14.1.0"
+  }
+}

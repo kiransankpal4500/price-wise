@@ -6,9 +6,12 @@ export interface Platform {
   reviewCount?: number;        // optional — quick-commerce platforms may not have this
   imageUrl: string;
   deeplink: string;            // link to product on that platform
+  product_url?: string;        // exact product page URL (alias for deeplink)
   deliveryEta?: string;        // relevant for quick-commerce platforms
   inStock: boolean;
   computedScore?: number;      // calculated score for transparency
+  source_product_id?: string;
+  data_source?: string;
 }
 
 export interface Product {
@@ -19,14 +22,25 @@ export interface Product {
   mainImage: string;
   platforms: Platform[];       // same product's listings across all platforms
   bestPickPlatform?: string;   // computed — which platform wins on score
+  relevanceScore?: number;     // 0.0 - 1.0 relevance score against query
+  data_source?: string;        // 'live' | 'cache' | 'fallback'
 }
 
 // Cache metadata returned by backend with every product response
 export interface CacheInfo {
   last_updated?: string;       // ISO timestamp of when data was last fetched from API
-  cache_status: 'fresh' | 'stale' | 'very_stale' | 'live' | 'empty' | 'unavailable' | 'unknown';
-  data_source: string;         // 'cache' | 'QuickCommerce' | 'none'
+  cache_status: 'fresh' | 'stale' | 'very_stale' | 'live' | 'empty' | 'fallback' | 'unavailable' | 'unknown';
+  data_source: string;         // 'live' | 'cache' | 'fallback' | 'none'
   message?: string;            // human-readable status for the UI
+}
+
+export interface QueryIntent {
+  raw?: string;
+  brand?: string;
+  model?: string;
+  storage?: string;
+  size_qty?: string;
+  is_accessory?: boolean;
 }
 
 // Full search API response shape
@@ -35,6 +49,7 @@ export interface SearchApiResponse {
   total: number;
   results: Product[];
   cache_info?: CacheInfo;
+  query_intent?: QueryIntent;
 }
 
 // Trending API response shape

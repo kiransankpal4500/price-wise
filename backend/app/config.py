@@ -31,6 +31,9 @@ DATABASE_PATH: str = os.getenv(
 )
 
 # ── Cache Freshness Settings ──────────────────────────────────────────────────
+# Cache TTL in minutes for search queries (default 30 minutes)
+CACHE_TTL_MINUTES: int = int(os.getenv("CACHE_TTL_MINUTES", "30"))
+
 # Data younger than 24h is considered fresh — no API call needed
 FRESH_CACHE_HOURS: int = int(os.getenv("FRESH_CACHE_HOURS", "24"))
 
@@ -39,6 +42,12 @@ STALE_CACHE_HOURS: int = int(os.getenv("STALE_CACHE_HOURS", "72"))
 
 # Trending products refresh interval in hours (every 48h is enough for trending)
 TRENDING_REFRESH_HOURS: int = int(os.getenv("TRENDING_REFRESH_HOURS", "48"))
+
+# ── Scraper Settings ───────────────────────────────────────────────────────────
+ENABLE_PLAYWRIGHT_FALLBACK: bool = os.getenv("ENABLE_PLAYWRIGHT_FALLBACK", "true").lower() == "true"
+ENABLE_BRIGHTDATA_FALLBACK: bool = os.getenv("ENABLE_BRIGHTDATA_FALLBACK", "true").lower() == "true"
+ENABLE_APIFY_FALLBACK: bool = os.getenv("ENABLE_APIFY_FALLBACK", "true").lower() == "true"
+APIFY_API_KEY: str = os.getenv("APIFY_API_KEY", "")
 
 # ── API Budget Settings ───────────────────────────────────────────────────────
 # Hard limit on QuickCommerce API calls per calendar month
@@ -49,3 +58,4 @@ CATALOG_BUDGET: int = int(os.getenv("CATALOG_BUDGET", "20"))    # home/all-produ
 SEARCH_BUDGET: int = int(os.getenv("SEARCH_BUDGET", "15"))      # user search queries
 TRENDING_BUDGET: int = int(os.getenv("TRENDING_BUDGET", "10"))  # trending section refresh
 EMERGENCY_BUDGET: int = int(os.getenv("EMERGENCY_BUDGET", "5")) # reserve buffer
+

@@ -146,7 +146,7 @@ async def search_products(
         products = cached_products
         data_source = "cache"
     else:
-        # Perform live multi-source parallel discovery
+        # Perform live multi-source parallel discovery via SourceRouter
         try:
             live_products, _, metrics = await execute_multi_source_search(query)
             if live_products:
@@ -159,19 +159,11 @@ async def search_products(
                 products = cached_products
                 data_source = "cache"
             else:
-                # Fallback dataset as last resort
-                catalog_products, c_status, c_updated = await get_cached_products("__trending__")
-                if query:
-                    filtered = [
-                        p for p in catalog_products
-                        if compute_relevance_score(intent, p.name, p.category, p.description) >= 0.20
-                    ]
-                    products = filtered if filtered else catalog_products
-                else:
-                    products = catalog_products
-                cache_status = "fallback"
-                data_source = "fallback"
-                last_updated = c_updated
+                # No mock or seed data fallback for live search queries
+                products = []
+                cache_status = "empty"
+                data_source = "none"
+                last_updated = None
         except Exception as e:
             logger.error(f"[SearchRoute] Multi-source search error: {e}")
             if cached_products:
@@ -179,8 +171,10 @@ async def search_products(
                 data_source = "cache"
             else:
                 products = []
-                cache_status = "empty"
+                cache_status = "error"
                 data_source = "none"
+                last_updated = None
+
 
     # Compute relevance scores for each product
     for p in products:
@@ -432,3 +426,95 @@ async def quickcommerce_health_check():
         "error_detail": error_detail,
         "test_endpoint": search_url,
     }
+
+
+# GET /api/health — System health check
+@router.get("/health")
+@router.get("/api/health")
+async def health_check():
+    """Reports system health status across core modules and dependencies."""
+    from app.config import (
+        BRIGHTDATA_API_KEY,
+        APIFY_API_KEY,
+        ENABLE_PLAYWRIGHT_FALLBACK,
+    )
+    
+    req_ok = False
+    try:
+        import requests
+        req_ok = True
+    except ImportError:
+        pass
+
+    bs4_ok = False
+    try:
+        import bs4
+        bs4_ok = True
+    except ImportError:
+        pass
+
+    pw_ok = False
+    try:
+        import playwright
+        pw_ok = True
+    except ImportError:
+        pass
+
+    return {
+        "backend": "OK",
+        "database": "OK",
+        "requests": "OK" if req_ok else "MISSING",
+        "beautifulsoup": "OK" if bs4_ok else "MISSING",
+        "playwright": "OK" if pw_ok and ENABLE_PLAYWRIGHT_FALLBACK else "DISABLED",
+        "brightdata": "configured" if bool(BRIGHTDATA_API_KEY) else "not configured",
+        "apify": "configured" if bool(APIFY_API_KEY) else "not configured",
+    }
+
+
+# GET /api/scraper/health — Scraper diagnostic endpoint
+@router.get("/scraper/health")
+@router.get("/api/scraper/health")
+async def scraper_health_check():
+    """Scraper sub-system health diagnostic endpoint."""
+    from app.services.scrapers.source_router import SourceRouter
+    router_inst = SourceRouter()
+    return {
+        "status": "OK",
+        "primary_scraper": "Requests + BeautifulSoup",
+        "fallback_scrapers": ["Playwright", "BrightData", "Apify"],
+        "supported_sources": list(router_inst.adapters.keys()),
+    }
+
+
+# GET /api/test-scraper — Development test endpoint for scraper verification
+@router.get("/test-scraper")
+@router.get("/api/test-scraper")
+async def test_scraper(
+    source: str = Query("Amazon", description="Target source: Amazon, Flipkart, Myntra, Blinkit, Zepto, Swiggy Instamart"),
+    query: str = Query("iPhone 16", description="Search query"),
+):
+    """
+    Development-only endpoint to test scraper component directly.
+    Displays scraper selected, HTTP status, execution time, and extracted products.
+    """
+    from app.services.scrapers.source_router import SourceRouter
+    router_inst = SourceRouter()
+
+    start_t = datetime.now()
+    res = await router_inst.scrape_source(source, query)
+    duration_s = (datetime.now() - start_t).total_seconds()
+
+    sample_product = res.products[0].to_dict() if res.products else None
+
+    return {
+        "source": source,
+        "query": query,
+        "scraper_used": res.scraper_used,
+        "success": res.success,
+        "products_found": len(res.products),
+        "response_time_seconds": round(duration_s, 2),
+        "status_code": res.status_code,
+        "error": res.error,
+        "sample_normalized_product": sample_product,
+    }
+

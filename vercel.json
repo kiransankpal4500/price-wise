@@ -1,6 +1,6 @@
 {
-  "framework": "nextjs",
-  "rootDirectory": "frontend",
+  "buildCommand": "cd frontend && npx next build",
+  "outputDirectory": "frontend/.next",
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -8,6 +8,7 @@
     }
   ]
 }
+
 
 
 

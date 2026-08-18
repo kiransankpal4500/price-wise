@@ -141,6 +141,7 @@ async def search_products(
     intent = parse_user_query(query)
     search_key = normalize_search_key(query)
     cached_products, cache_status, last_updated = await get_cached_products(search_key)
+    sources_summary = None
 
     if cache_status == CACHE_FRESH and cached_products:
         products = cached_products
@@ -149,6 +150,7 @@ async def search_products(
         # Perform live multi-source parallel discovery via SourceRouter
         try:
             live_products, _, metrics = await execute_multi_source_search(query)
+            sources_summary = (metrics.get("router_metrics") or {}).get("sources_summary")
             if live_products:
                 products = live_products
                 cache_status = "live"
@@ -174,7 +176,6 @@ async def search_products(
                 cache_status = "error"
                 data_source = "none"
                 last_updated = None
-
 
     # Compute relevance scores for each product
     for p in products:
@@ -218,7 +219,9 @@ async def search_products(
             message=_cache_message(cache_status, last_updated),
         ),
         query_intent=intent_dict,
+        sources_summary=sources_summary,
     )
+
 
 
 # GET /trending — cache-first trending products, refreshed every TRENDING_REFRESH_HOURS

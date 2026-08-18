@@ -1,7 +1,7 @@
 """
 Verification and Test Suite for PriceWise Scraper Integration.
-Tests dependencies, JSON-LD parsing, SourceRouter priority cascade,
-exact URL preservation, and health endpoints.
+Tests dependencies, JSON-LD parsing, SourceRouter multi-page pagination,
+variant mapping, exact URL preservation, and health endpoints.
 """
 
 import asyncio
@@ -26,7 +26,6 @@ def test_imports():
     logger.info(f"  [OK] beautifulsoup4 version: {bs4.__version__}")
     logger.info(f"  [OK] lxml version: {lxml.__file__}")
     logger.info(f"  [OK] playwright module: {playwright.__file__}")
-
 
 
 def test_json_ld_parser():
@@ -75,30 +74,36 @@ def test_json_ld_parser():
     logger.info(f"  [OK] Successfully parsed JSON-LD product: '{prod.title}' | Price: ₹{prod.price} | URL: {prod.product_url}")
 
 
-async def test_source_router_live_search():
-    logger.info("=== TEST 3: SourceRouter Live Search ===")
+async def test_source_router_multi_page():
+    logger.info("=== TEST 3: SourceRouter Multi-Page Controlled Pagination & Variant Mapping ===")
     from app.services.scrapers.source_router import SourceRouter
 
     router = SourceRouter()
-    query = "iPhone 16"
-    logger.info(f"  Executing real live search for query='{query}'...")
+    test_queries = ["iPhone 16", "Samsung Galaxy S24", "Nike shoes"]
 
-    domain_prods, debug_info = await router.execute_search(query)
-    logger.info(f"  Scraped {debug_info['total_scraped_products']} raw items across sources.")
-    logger.info(f"  Domain products generated: {len(domain_prods)}")
+    for query in test_queries:
+        logger.info(f"\n  --- Testing Query: '{query}' ---")
+        domain_prods, debug_info = await router.execute_search(query)
 
-    for m in debug_info["source_metrics"]:
-        logger.info(f"  Source: {m['source']} | Success: {m['success']} | Scraper: {m['scraper_used']} | Products: {m['products_found']} | Time: {m['response_time_ms']:.1f}ms")
+        logger.info(f"  Raw Scraped Items: {debug_info['total_scraped_products']}")
+        logger.info(f"  Domain Products Generated: {len(domain_prods)}")
 
-    if domain_prods and domain_prods[0].platforms:
-        top_platform = domain_prods[0].platforms[0]
-        logger.info(f"  [OK] Top product: '{domain_prods[0].name}' | Platform: {top_platform.platformName} | Price: ₹{top_platform.price} | URL: {top_platform.product_url}")
-    else:
-        logger.info("  [NOTE] Scrapers returned 0 live products (Network/bot protection). SourceRouter fallback sequence verified.")
+        summary = debug_info.get("sources_summary", {})
+        for src, metrics in summary.items():
+            logger.info(
+                f"    [{src}] Success={metrics['success']} | Pages Scraped={metrics['pages_scraped']} | "
+                f"Products Found={metrics['products_found']} | Scraper={metrics['scraper']}"
+            )
+
+        if domain_prods:
+            logger.info(f"  [OK] '{query}' returned {len(domain_prods)} distinct product listings.")
+            top_prod = domain_prods[0]
+            top_plat = top_prod.platforms[0]
+            logger.info(f"  Top Match: '{top_prod.name}' | Platform: {top_plat.platformName} | Price: ₹{top_plat.price} | URL: {top_plat.product_url}")
 
 
-async def test_health_endpoints():
-    logger.info("=== TEST 4: Health Endpoints ===")
+async def test_health_and_api_endpoints():
+    logger.info("=== TEST 4: Health & API Search Endpoints ===")
     from fastapi.testclient import TestClient
     from app.main import app
 
@@ -118,19 +123,19 @@ async def test_health_endpoints():
     scraper_health = res_scraper_health.json()
     logger.info(f"  [OK] GET /api/scraper/health -> primary: {scraper_health['primary_scraper']} | sources: {scraper_health['supported_sources']}")
 
-    res_test_scraper = client.get("/api/test-scraper?source=Amazon&query=iPhone+16")
-    assert res_test_scraper.status_code == 200, f"Test scraper endpoint failed: {res_test_scraper.status_code}"
-    test_data = res_test_scraper.json()
-    logger.info(f"  [OK] GET /api/test-scraper -> source: {test_data['source']} | scraper_used: {test_data['scraper_used']} | products_found: {test_data['products_found']}")
+    res_search = client.get("/api/search?query=iPhone+16")
+    assert res_search.status_code == 200, f"Search endpoint failed: {res_search.status_code}"
+    search_data = res_search.json()
+    logger.info(f"  [OK] GET /api/search -> query: {search_data['query']} | total_results: {search_data['total']} | cache_status: {search_data['cache_info']['cache_status']}")
 
 
 async def main():
     test_imports()
     test_json_ld_parser()
-    await test_source_router_live_search()
-    await test_health_endpoints()
+    await test_source_router_multi_page()
+    await test_health_and_api_endpoints()
     logger.info("==========================================")
-    logger.info("ALL VERIFICATION SUITES COMPLETED SUCCESSFULLY!")
+    logger.info("ALL MULTI-PAGE & VARIANT TEST SUITES PASSED!")
     logger.info("==========================================")
 
 

@@ -5,11 +5,13 @@ Coordinates multi-source searches using the strict priority execution chain:
 2. Playwright Headless Browser (JS Fallback)
 3. Bright Data / Apify API (Final Fallback)
 
-Normalizes scraped results into PriceWise Product and Platform domain objects.
+Normalizes scraped results into PriceWise Product and Platform domain objects,
+ensuring multi-page results are collected and distinct product variants remain separate.
 """
 
 import asyncio
 import logging
+import re
 import time
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -74,8 +76,8 @@ class SourceRouter:
 
             logger.info(
                 f"SEARCH: {query} | SOURCE: {source_name} | SCRAPER: BeautifulSoup | "
-                f"STATUS: {bs4_res.status_code or 500} | PRODUCTS: {len(valid_products)} | "
-                f"CACHE: MISS | TIME: {elapsed_s:.2f}s"
+                f"STATUS: {bs4_res.status_code or 500} | PAGES: {bs4_res.pages_scraped} | "
+                f"PRODUCTS: {len(valid_products)} | TIME: {elapsed_s:.2f}s"
             )
 
             if bs4_res.success and valid_products:
@@ -101,7 +103,7 @@ class SourceRouter:
             logger.info(
                 f"SEARCH: {query} | SOURCE: {source_name} | SCRAPER: Playwright | "
                 f"STATUS: {pw_res.status_code or 500} | PRODUCTS: {len(valid_products)} | "
-                f"CACHE: MISS | TIME: {elapsed_s:.2f}s"
+                f"TIME: {elapsed_s:.2f}s"
             )
 
             if pw_res.success and valid_products:
@@ -118,7 +120,7 @@ class SourceRouter:
             logger.info(
                 f"SEARCH: {query} | SOURCE: {source_name} | SCRAPER: BrightData | "
                 f"STATUS: {bd_res.status_code or 500} | PRODUCTS: {len(valid_products)} | "
-                f"CACHE: MISS | TIME: {elapsed_s:.2f}s"
+                f"TIME: {elapsed_s:.2f}s"
             )
 
             if bd_res.success and valid_products:
@@ -134,7 +136,7 @@ class SourceRouter:
             logger.info(
                 f"SEARCH: {query} | SOURCE: {source_name} | SCRAPER: Apify | "
                 f"STATUS: {apify_res.status_code or 500} | PRODUCTS: {len(valid_products)} | "
-                f"CACHE: MISS | TIME: {elapsed_s:.2f}s"
+                f"TIME: {elapsed_s:.2f}s"
             )
 
             if apify_res.success and valid_products:
@@ -163,19 +165,29 @@ class SourceRouter:
         total_time_s = time.time() - start_time
 
         all_scraped_products: List[ScrapedProduct] = []
-        source_metrics: List[Dict[str, Any]] = []
+        sources_summary: Dict[str, Any] = {}
 
         for res in results:
-            source_metrics.append({
-                "source": res.source,
+            sources_summary[res.source] = {
                 "success": res.success,
-                "scraper_used": res.scraper_used,
+                "scraper": res.scraper_used,
+                "pages_scraped": res.pages_scraped,
                 "products_found": len(res.products),
                 "response_time_ms": res.response_time_ms,
                 "error": res.error,
-            })
+                "page_metrics": res.page_metrics,
+            }
             if res.success:
                 all_scraped_products.extend(res.products)
+
+        # Log complete breakdown per source
+        logger.info(f"\n==========================================")
+        logger.info(f"SEARCH COMPLETE: '{query}' | Total Scraped Raw Items: {len(all_scraped_products)}")
+        for src, metrics in sources_summary.items():
+            logger.info(
+                f"  {src}: Pages Scraped={metrics['pages_scraped']} | Products Found={metrics['products_found']} | Scraper={metrics['scraper']}"
+            )
+        logger.info(f"==========================================\n")
 
         # Map ScrapedProduct instances to PriceWise Product and Platform objects
         domain_products = self._map_to_domain_products(query, all_scraped_products)
@@ -185,49 +197,79 @@ class SourceRouter:
             "total_scraped_products": len(all_scraped_products),
             "total_domain_products": len(domain_products),
             "total_time_s": total_time_s,
-            "source_metrics": source_metrics,
+            "sources_summary": sources_summary,
         }
 
         return domain_products, debug_info
 
     def _map_to_domain_products(self, query: str, scraped_items: List[ScrapedProduct]) -> List[Product]:
-        """Converts ScrapedProduct records into PriceWise Product domain structures."""
+        """
+        Converts ScrapedProduct records into PriceWise Product domain structures.
+        Groups cross-platform matches for exact same variants while preserving distinct variants as separate products.
+        """
         if not scraped_items:
             return []
 
-        platforms_by_source: List[Platform] = []
-        for sp in scraped_items:
-            verified_url = sanitize_product_url(sp.product_url, sp.source)
-            plat = Platform(
-                platformName=sp.source,
-                price=sp.price,
-                originalPrice=sp.original_price,
-                rating=sp.rating or 4.2,
-                reviewCount=sp.review_count or 100,
-                imageUrl=sp.image_url or "",
-                deeplink=verified_url or sp.product_url,
-                product_url=verified_url or sp.product_url,
-                deliveryEta=sp.delivery_info or "Standard Delivery",
-                inStock=sp.availability,
-                source_product_id=sp.source_product_id,
-                data_source=sp.data_source,
+        # 1. Deduplicate scraped items per source by source + source_product_id or canonical URL
+        seen_keys = set()
+        deduped_items: List[ScrapedProduct] = []
+        for item in scraped_items:
+            item_key = f"{item.source}:{item.source_product_id or item.product_url}"
+            if item_key not in seen_keys:
+                seen_keys.add(item_key)
+                deduped_items.append(item)
+
+        # 2. Group items across platforms if they refer to identical titles/variants
+        def get_group_key(item: ScrapedProduct) -> str:
+            title_clean = re.sub(r"[^\w\s]", "", item.title.lower()).strip()
+            title_clean = re.sub(r"\s+", " ", title_clean)
+            return title_clean
+
+        grouped_products: Dict[str, List[ScrapedProduct]] = {}
+        for item in deduped_items:
+            gkey = get_group_key(item)
+            if gkey not in grouped_products:
+                grouped_products[gkey] = []
+            grouped_products[gkey].append(item)
+
+        domain_products: List[Product] = []
+        for gkey, items in grouped_products.items():
+            primary = items[0]
+            platforms: List[Platform] = []
+            seen_sources = set()
+
+            for it in items:
+                if it.source in seen_sources:
+                    continue
+                seen_sources.add(it.source)
+                verified_url = sanitize_product_url(it.product_url, it.source)
+                plat = Platform(
+                    platformName=it.source,
+                    price=it.price,
+                    originalPrice=it.original_price,
+                    rating=it.rating or 4.2,
+                    reviewCount=it.review_count or 100,
+                    imageUrl=it.image_url or "",
+                    deeplink=verified_url or it.product_url,
+                    product_url=verified_url or it.product_url,
+                    deliveryEta=it.delivery_info or "Standard Delivery",
+                    inStock=it.availability,
+                    source_product_id=it.source_product_id,
+                    data_source=it.data_source,
+                )
+                platforms.append(plat)
+
+            prod_id = f"pw-{hash(primary.title.strip().lower()) & 0xFFFFFFFF:x}"
+            prod = Product(
+                id=prod_id,
+                name=primary.title,
+                category="General",
+                description=f"Real-time scraped price comparison for {primary.title}",
+                mainImage=primary.image_url or "",
+                platforms=platforms,
+                bestPickPlatform=platforms[0].platformName if platforms else None,
+                data_source="live",
             )
-            platforms_by_source.append(plat)
+            domain_products.append(prod)
 
-        # Build primary product container
-        primary_title = scraped_items[0].title if scraped_items else query.title()
-        primary_image = scraped_items[0].image_url or ""
-        prod_id = f"pw-{hash(query.strip().lower()) & 0xFFFFFFFF:x}"
-
-        prod = Product(
-            id=prod_id,
-            name=primary_title,
-            category="General",
-            description=f"Real-time scraped price comparison for {query}",
-            mainImage=primary_image,
-            platforms=platforms_by_source,
-            bestPickPlatform=platforms_by_source[0].platformName if platforms_by_source else None,
-            data_source="live",
-        )
-
-        return [prod]
+        return domain_products

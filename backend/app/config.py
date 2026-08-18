@@ -49,6 +49,13 @@ ENABLE_BRIGHTDATA_FALLBACK: bool = os.getenv("ENABLE_BRIGHTDATA_FALLBACK", "true
 ENABLE_APIFY_FALLBACK: bool = os.getenv("ENABLE_APIFY_FALLBACK", "true").lower() == "true"
 APIFY_API_KEY: str = os.getenv("APIFY_API_KEY", "")
 
+# Maximum pages to scrape per search request per source (default: 3)
+MAX_PAGES_PER_SOURCE: int = int(os.getenv("MAX_PAGES_PER_SOURCE", "3"))
+
+# Maximum products to collect per source per query (default: 100)
+MAX_PRODUCTS_PER_SOURCE: int = int(os.getenv("MAX_PRODUCTS_PER_SOURCE", "100"))
+
+
 # ── API Budget Settings ───────────────────────────────────────────────────────
 # Hard limit on QuickCommerce API calls per calendar month
 MONTHLY_API_LIMIT: int = int(os.getenv("MONTHLY_API_LIMIT", "50"))

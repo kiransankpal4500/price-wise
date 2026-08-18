@@ -47,6 +47,8 @@ class SearchResponse(BaseModel):
     results: List[Product] = Field(..., description="List of matched products with computed best picks")
     cache_info: Optional[CacheMetadata] = Field(None, description="Cache freshness and data source information")
     query_intent: Optional[Dict[str, Any]] = Field(None, description="Parsed query attributes (brand, model, spec)")
+    sources_summary: Optional[Dict[str, Any]] = Field(None, description="Per-source scrape metrics (products_found, pages_scraped, scraper)")
+
 
 
 # Response wrapper for trending products endpoint

@@ -37,10 +37,12 @@ def compute_relevance_score(
 
     # 1. Brand Match (+0.25)
     if intent.brand:
-        if intent.brand.lower() in full_text:
+        brand_clean = intent.brand.lower()
+        if brand_clean in full_text or (brand_clean == "apple" and "iphone" in title_lower) or (brand_clean == "samsung" and "galaxy" in title_lower):
             score += 0.25
         else:
             score -= 0.15
+
 
     # 2. Model Match (+0.35)
     if intent.model:

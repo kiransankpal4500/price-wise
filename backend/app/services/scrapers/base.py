@@ -73,6 +73,9 @@ class ScrapeResult:
     response_time_ms: float = 0.0
     error: Optional[str] = None
     bot_detected: bool = False
+    pages_scraped: int = 1
+    page_metrics: List[Dict[str, Any]] = field(default_factory=list)
+
 
 
 class BaseScraper(ABC):

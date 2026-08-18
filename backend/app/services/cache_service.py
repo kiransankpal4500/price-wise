@@ -81,7 +81,7 @@ async def get_cached_products(search_key: str) -> Tuple[List[Product], str, Opti
                 FROM cached_products
                 GROUP BY product_id
                 ORDER BY fetched_at DESC
-                LIMIT 8
+                LIMIT 16
             """
             params = ()
         else:
@@ -89,27 +89,15 @@ async def get_cached_products(search_key: str) -> Tuple[List[Product], str, Opti
                 SELECT DISTINCT product_id, name, category, description, image_url,
                                 MAX(fetched_at) as fetched_at
                 FROM cached_products
-                WHERE search_key LIKE ? OR LOWER(name) LIKE ? OR LOWER(category) LIKE ?
+                WHERE search_key = ? OR search_key LIKE ? OR LOWER(name) LIKE ?
                 GROUP BY product_id
                 ORDER BY fetched_at DESC
             """
-            params = (pattern, pattern, pattern)
+            params = (search_key, pattern, pattern)
 
         cursor = await db.execute(sql, params)
         product_rows = await cursor.fetchall()
 
-        # If specific query produced no results, return all catalog items as fallback
-        if not product_rows and search_key != "__trending__":
-            cursor = await db.execute(
-                """
-                SELECT DISTINCT product_id, name, category, description, image_url,
-                                MAX(fetched_at) as fetched_at
-                FROM cached_products
-                GROUP BY product_id
-                ORDER BY fetched_at DESC
-                """
-            )
-            product_rows = await cursor.fetchall()
 
         if not product_rows:
             return [], CACHE_EMPTY, None

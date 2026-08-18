@@ -1,7 +1,8 @@
 {
   "framework": null,
-  "buildCommand": "cd frontend && npx next build",
+  "buildCommand": "cd frontend && npm install && npx next build",
   "outputDirectory": "frontend/.next",
+
   "rewrites": [
     {
       "source": "/api/(.*)",

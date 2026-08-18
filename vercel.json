@@ -1,4 +1,5 @@
 {
+  "framework": null,
   "buildCommand": "cd frontend && npx next build",
   "outputDirectory": "frontend/.next",
   "rewrites": [
@@ -8,6 +9,7 @@
     }
   ]
 }
+
 
 
 
